@@ -1,0 +1,30 @@
+{
+  "name": "kapoot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Clone minimal de Kahoot, en memoire et ephemere",
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
+    "test": "node --test test/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "sandbox": "playwright test -c playwright.sandbox.config.ts"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.2"
+  }
+}

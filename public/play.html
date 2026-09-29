@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KaPoot &mdash; Joueur</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <h1>KaPoot</h1>
+    <p class="tagline" id="who"></p>
+
+    <div class="card" id="stage">
+      <h2 id="heading">Connexion&hellip;</h2>
+      <div class="timer hidden" id="timer"><div></div></div>
+      <p class="question hidden" id="question"></p>
+      <div class="answers hidden" id="answers"></div>
+      <div id="result"></div>
+      <div class="meta"><span id="status"></span><span id="score"></span></div>
+    </div>
+
+    <script type="module">
+      import { $, connect, countdown, escapeHtml, renderPodium, session } from '/common.js';
+
+      const me = session.load('player');
+      if (!me) location.href = '/';
+
+      $('#who').textContent = `${me.nickname} — partie ${me.pin}`;
+
+      const timerBar = $('#timer').firstElementChild;
+      let cancelTimer = null;
+      let answered = false;
+
+      const show = (el, visible) => el.classList.toggle('hidden', !visible);
+
+      function renderQuestion(q, remainingMs, locked) {
+        cancelTimer?.();
+        answered = locked;
+        $('#heading').textContent = `Question ${q.index + 1} / ${q.total}`;
+        $('#question').textContent = q.text;
+        $('#result').innerHTML = '';
+        $('#status').textContent = locked ? 'Reponse envoyee' : 'A vous de jouer !';
+
+        $('#answers').innerHTML = q.choices
+          .map((c, i) => `<button class="answer" data-i="${i}" ${locked ? 'disabled' : ''}>${escapeHtml(c)}</button>`)
+          .join('');
+
+        show($('#question'), true);
+        show($('#answers'), true);
+        show($('#timer'), true);
+        cancelTimer = countdown(timerBar, remainingMs, q.timeLimitSec * 1000);
+      }
+
+      function renderReveal(msg) {
+        cancelTimer?.();
+        show($('#timer'), false);
+        show($('#answers'), true);
+
+        for (const btn of $('#answers').children) {
+          const i = Number(btn.dataset.i);
+          btn.disabled = true;
+          btn.classList.toggle('correct', i === msg.correctIndex);
+          btn.classList.toggle('dim', i !== msg.correctIndex);
+        }
+
+        const good = msg.yourPoints > 0;
+        const label = msg.yourChoice === null || msg.yourChoice === undefined
+          ? 'Trop tard !'
+          : good
+            ? `Bravo ! +${msg.yourPoints}`
+            : 'Rate !';
+        $('#result').innerHTML = `<div class="banner ${good ? 'good' : 'bad'}">${label}</div>${renderStanding(msg.standing)}`;        $('#status').textContent = msg.isLast ? 'Derniere question' : 'En attente de la suite…';
+      }
+
+      /** Place du joueur et ecart avec celui qui le precede. */
+      function renderStanding(standing) {
+        if (!standing) return '';
+        const { yourRank, gapToAhead, aheadNickname } = standing;
+        const gap =
+          gapToAhead === null
+            ? 'Vous etes en tete !'
+            : gapToAhead === 0
+              ? `A egalite avec ${escapeHtml(aheadNickname)}`
+              : `${gapToAhead} pt${gapToAhead > 1 ? 's' : ''} derriere ${escapeHtml(aheadNickname)}`;
+        return `<div class="standing-gap" id="gap"><strong>${yourRank}e</strong> — ${gap}</div>`;
+      }
+
+      function renderEnd(msg) {
+        cancelTimer?.();
+        show($('#timer'), false);
+        show($('#question'), false);
+        show($('#answers'), false);
+        // Meme podium que l animateur, devoile au meme rythme.
+        $('#heading').textContent = 'Podium';
+        $('#result').innerHTML = '<div class="podium" id="podium"></div>';
+        renderPodium($('#podium'), msg);
+        $('#status').textContent = '';
+      }
+
+      const socket = connect(
+        me.pin,
+        me.playerToken,
+        (msg) => {
+          if (msg.yourScore !== null && msg.yourScore !== undefined) {
+            $('#score').textContent = `${msg.yourScore} pts`;
+          }
+
+          switch (msg.type) {
+            case 'state_sync':
+              if (msg.state === 'lobby') {
+                $('#heading').textContent = msg.title;
+                $('#status').textContent = `En attente du lancement — ${msg.playerCount} joueur(s)`;
+              } else if (msg.state === 'question' && msg.question) {
+                renderQuestion(
+                  { ...msg.question, index: msg.index, total: msg.total },
+                  msg.question.remainingMs,
+                  msg.alreadyAnswered,
+                );
+              } else if (msg.state === 'reveal' && msg.reveal) {
+                $('#heading').textContent = `Question ${msg.index + 1} / ${msg.total}`;
+                renderReveal({ ...msg.reveal, isLast: msg.isLast, standing: msg.standing, yourPoints: 0, yourChoice: null });
+              } else if (msg.state === 'ended') {
+                renderEnd(msg);
+              }
+              return;
+
+            case 'question_started':
+              renderQuestion(msg, msg.timeLimitSec * 1000, false);
+              return;
+
+            case 'question_ended':
+              renderReveal(msg);
+              return;
+
+            case 'game_ended':
+            case 'podium_revealed':
+              renderEnd(msg);
+              return;
+
+            case 'error':
+              $('#status').textContent = msg.message;
+              return;
+          }
+        },
+        () => {
+          $('#heading').textContent = 'Partie terminee ou introuvable';
+          $('#status').textContent = 'Connexion perdue.';
+          session.clear('player');
+        },
+      );
+
+      $('#answers').addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.answer');
+        if (!btn || answered) return;
+        answered = true;
+        for (const el of $('#answers').children) el.disabled = true;
+        $('#status').textContent = 'Reponse envoyee';
+        socket.send({ type: 'answer', choiceIndex: Number(btn.dataset.i) });
+      });
+    </script>
+  </body>
+</html>

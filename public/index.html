@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KaPoot</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <h1>KaPoot</h1>
+    <p class="tagline">Le quiz qui s&rsquo;evapore au redemarrage.</p>
+
+    <form class="card" id="join">
+      <h2>Rejoindre une partie</h2>
+      <label for="pin">Code PIN</label>
+      <input id="pin" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="off" required />
+      <label for="nickname">Pseudo</label>
+      <input id="nickname" maxlength="20" placeholder="Votre pseudo" autocomplete="off" required />
+      <button type="submit">Rejoindre</button>
+      <p class="error" id="error"></p>
+    </form>
+
+    <p><a href="/host.html">Animer une partie &rarr;</a></p>
+
+    <script type="module">
+      import { $, api, session } from '/common.js';
+
+      $('#join').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const pin = $('#pin').value.trim();
+        const nickname = $('#nickname').value.trim();
+        $('#error').textContent = '';
+
+        try {
+          const { playerToken } = await api('POST', `/api/games/${pin}/players`, { nickname });
+          session.save('player', { pin, playerToken, nickname });
+          location.href = '/play.html';
+        } catch (err) {
+          $('#error').textContent = err.message;
+        }
+      });
+    </script>
+  </body>
+</html>

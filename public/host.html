@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KaPoot &mdash; Animateur</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <h1>KaPoot</h1>
+    <p class="tagline">Console animateur</p>
+
+    <form class="card" id="setup">
+      <h2>Nouveau quiz</h2>
+      <label for="quiz">Definition JSON</label>
+      <textarea id="quiz" spellcheck="false"></textarea>
+      <button type="submit">Creer la partie</button>
+      <p class="error" id="setup-error"></p>
+    </form>
+
+    <div class="card hidden" id="console">
+      <p class="pin-label">Code PIN</p>
+      <p class="pin" id="pin"></p>
+      <h2 id="heading"></h2>
+      <div class="timer hidden" id="timer"><div></div></div>
+      <p class="question hidden" id="question"></p>
+      <div class="answers hidden" id="answers"></div>
+      <div class="chips" id="players"></div>
+      <div class="podium hidden" id="podium"></div>
+      <table id="board"></table>
+      <div class="meta"><span id="status"></span><span id="counter"></span></div>
+      <button id="action" class="hidden">Demarrer</button>
+      <button id="restart" class="ghost hidden">Nouvelle partie</button>
+    </div>
+
+    <script type="module">
+      import {
+        $,
+        api,
+        connect,
+        countdown,
+        escapeHtml,
+        nextPodiumPlace,
+        renderLeaderboard,
+        renderPodium,
+        session,
+      } from '/common.js';
+
+      const SAMPLE = {
+        title: 'Culture generale',
+        questions: [
+          {
+            text: 'Quelle est la capitale de l Australie ?',
+            choices: ['Sydney', 'Canberra', 'Melbourne', 'Perth'],
+            correctIndex: 1,
+            timeLimitSec: 20,
+          },
+          {
+            text: 'Combien de cotes a un hexagone ?',
+            choices: ['5', '6', '7', '8'],
+            correctIndex: 1,
+            timeLimitSec: 15,
+          },
+          {
+            text: 'Qui a ecrit "Le Petit Prince" ?',
+            choices: ['Camus', 'Saint-Exupery', 'Hugo', 'Proust'],
+            correctIndex: 1,
+            timeLimitSec: 20,
+          },
+        ],
+      };
+
+      $('#quiz').value = JSON.stringify(SAMPLE, null, 2);
+
+      const timerBar = $('#timer').firstElementChild;
+      let cancelTimer = null;
+      let socket = null;
+      let lastChoices = [];
+
+      const show = (el, visible) => el.classList.toggle('hidden', !visible);
+
+      $('#setup').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        $('#setup-error').textContent = '';
+        let quiz;
+        try {
+          quiz = JSON.parse($('#quiz').value);
+        } catch {
+          $('#setup-error').textContent = 'JSON invalide';
+          return;
+        }
+        try {
+          const { pin, hostToken } = await api('POST', '/api/games', { quiz });
+          session.save('host', { pin, hostToken });
+          openConsole(pin, hostToken);
+        } catch (err) {
+          $('#setup-error').textContent = err.message;
+        }
+      });
+
+      $('#restart').addEventListener('click', () => {
+        socket?.stop();
+        session.clear('host');
+        location.reload();
+      });
+
+      function openConsole(pin, hostToken) {
+        show($('#setup'), false);
+        show($('#console'), true);
+        $('#pin').textContent = pin;
+
+        socket = connect(pin, hostToken, onMessage, () => {
+          $('#status').textContent = 'Connexion perdue — la partie a peut-etre ete nettoyee.';
+          session.clear('host');
+          show($('#restart'), true);
+        });
+
+        $('#action').onclick = () => {
+          const action = $('#action').dataset.action;
+          $('#action').disabled = true;
+          socket.send({ type: action });
+        };
+      }
+
+      function renderLobby(msg) {
+        $('#heading').textContent = msg.title;
+        $('#players').innerHTML = msg.players
+          .map((n) => `<span class="chip">${escapeHtml(n)}</span>`)
+          .join('');
+        $('#status').textContent = `${msg.playerCount} joueur(s) connecte(s)`;
+        $('#counter').textContent = `${msg.total} question(s)`;
+        const action = $('#action');
+        action.textContent = 'Demarrer';
+        action.dataset.action = 'start';
+        action.disabled = msg.playerCount === 0;
+        show(action, true);
+      }
+
+      function renderQuestion(q, remainingMs) {
+        cancelTimer?.();
+        lastChoices = q.choices;
+        show($('#players'), false);
+        $('#board').innerHTML = '';
+        $('#heading').textContent = `Question ${q.index + 1} / ${q.total}`;
+        $('#question').textContent = q.text;
+        $('#answers').innerHTML = q.choices
+          .map((c, i) => `<button class="answer" data-i="${i}" disabled>${escapeHtml(c)}</button>`)
+          .join('');
+        show($('#question'), true);
+        show($('#answers'), true);
+        show($('#timer'), true);
+        show($('#action'), false);
+        $('#counter').textContent = '';
+        $('#status').textContent = '0 reponse';
+        cancelTimer = countdown(timerBar, remainingMs, q.timeLimitSec * 1000);
+      }
+
+      function renderReveal(reveal, isLast) {
+        cancelTimer?.();
+        show($('#timer'), false);
+        for (const btn of $('#answers').children) {
+          const i = Number(btn.dataset.i);
+          btn.classList.toggle('correct', i === reveal.correctIndex);
+          btn.classList.toggle('dim', i !== reveal.correctIndex);
+          btn.textContent = `${lastChoices[i]} — ${reveal.counts[i]}`;
+        }
+        renderLeaderboard($('#board'), reveal.leaderboard);
+        $('#status').textContent = 'Classement provisoire';
+        const action = $('#action');
+        action.textContent = isLast ? 'Voir le podium' : 'Question suivante';
+        action.dataset.action = 'next';
+        action.disabled = false;
+        show(action, true);
+      }
+
+      function renderEnd(msg) {
+        cancelTimer?.();
+        show($('#timer'), false);
+        show($('#question'), false);
+        show($('#answers'), false);
+        show($('#players'), false);
+        $('#board').innerHTML = '';
+        $('#counter').textContent = '';
+        $('#heading').textContent = 'Podium';
+        show($('#podium'), true);
+        renderPodium($('#podium'), msg);
+
+        // L animateur devoile les marches une a une, de la derniere a la premiere.
+        const next = nextPodiumPlace(msg);
+        const action = $('#action');
+        if (next) {
+          action.textContent = `Devoiler la ${next === 1 ? '1re' : `${next}e`} place`;
+          action.dataset.action = 'reveal_podium';
+          action.disabled = false;
+          show(action, true);
+          show($('#restart'), false);
+          $('#status').textContent = '';
+        } else {
+          show(action, false);
+          show($('#restart'), true);
+          $('#status').textContent = 'Partie terminee';
+        }
+      }
+
+      function onMessage(msg) {
+        switch (msg.type) {
+          case 'state_sync':
+            if (msg.state === 'lobby') renderLobby(msg);
+            else if (msg.state === 'question' && msg.question) {
+              renderQuestion({ ...msg.question, index: msg.index, total: msg.total }, msg.question.remainingMs);
+              $('#status').textContent = `${msg.answeredCount} reponse(s)`;
+            } else if (msg.state === 'reveal' && msg.reveal) {
+              lastChoices = msg.reveal.counts.map((_, i) => lastChoices[i] ?? `Choix ${i + 1}`);
+              $('#heading').textContent = `Question ${msg.index + 1} / ${msg.total}`;
+              show($('#answers'), true);
+              $('#answers').innerHTML = msg.reveal.counts
+                .map((_, i) => `<button class="answer" data-i="${i}" disabled></button>`)
+                .join('');
+              renderReveal(msg.reveal, msg.isLast);
+            } else if (msg.state === 'ended') renderEnd(msg);
+            return;
+
+          case 'player_joined':
+          case 'player_left':
+            if ($('#action').dataset.action === 'start') {
+              $('#status').textContent = `${msg.playerCount} joueur(s) connecte(s)`;
+              $('#action').disabled = msg.playerCount === 0;
+              const chips = $('#players');
+              if (msg.type === 'player_joined') {
+                chips.insertAdjacentHTML('beforeend', `<span class="chip">${escapeHtml(msg.nickname)}</span>`);
+              }
+            }
+            return;
+
+          case 'question_started':
+            renderQuestion(msg, msg.timeLimitSec * 1000);
+            return;
+
+          case 'answer_received':
+            $('#status').textContent = `${msg.answeredCount} reponse(s)`;
+            return;
+
+          case 'question_ended':
+            renderReveal(msg, msg.isLast);
+            return;
+
+          case 'game_ended':
+          case 'podium_revealed':
+            renderEnd(msg);
+            return;
+
+          case 'error':
+            $('#status').textContent = msg.message;
+            $('#action').disabled = false;
+            return;
+        }
+      }
+
+      const saved = session.load('host');
+      if (saved) openConsole(saved.pin, saved.hostToken);
+    </script>
+  </body>
+</html>

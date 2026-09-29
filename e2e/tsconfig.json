@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": false,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}
