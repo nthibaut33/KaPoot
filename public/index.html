@@ -25,6 +25,13 @@
     <script type="module">
       import { $, api, session } from '/common.js';
 
+      // Arrivee par le QR code de l animateur : le PIN est deja dans l URL.
+      const invitedPin = new URLSearchParams(location.search).get('pin');
+      if (invitedPin) {
+        $('#pin').value = invitedPin.replace(/\D/g, '').slice(0, 6);
+        $('#nickname').focus();
+      }
+
       $('#join').addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const pin = $('#pin').value.trim();

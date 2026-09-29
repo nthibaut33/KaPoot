@@ -105,3 +105,29 @@ test('1 joueur reel + 8 bots WebSocket dans la meme partie', async ({ openHost, 
 
   await bots.close();
 });
+
+test('le QR code du lobby amene un joueur sur un formulaire deja rempli', async ({
+  openHost,
+  newParticipant,
+}) => {
+  const host = await openHost(QUIZ);
+
+  // Le QR code n est affiche que dans le lobby, avec le lien qu il encode juste en dessous.
+  await expect(host.qr).toBeVisible();
+  const joinUrl = (await host.joinUrl.textContent())!.trim();
+  expect(joinUrl).toContain(`?pin=${host.pin}`);
+
+  // Un joueur qui scanne arrive sur l accueil avec le PIN deja renseigne.
+  const page = await (await newParticipant()).newPage();
+  await page.goto(joinUrl);
+  await expect(page.locator('#pin')).toHaveValue(host.pin);
+
+  await page.locator('#nickname').fill('Alice');
+  await page.getByRole('button', { name: 'Rejoindre' }).click();
+  await page.waitForURL('**/play.html');
+  await host.waitForPlayers(1);
+
+  // Une fois la partie lancee, l invitation laisse la place a la question.
+  await host.start();
+  await expect(host.invite).toBeHidden();
+});

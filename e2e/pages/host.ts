@@ -41,6 +41,16 @@ export class HostConsole {
   get heading(): Locator {
     return this.page.locator('#heading');
   }
+  /** Bloc d invitation du lobby : QR code + lien en clair. */
+  get invite(): Locator {
+    return this.page.locator('#invite');
+  }
+  get qr(): Locator {
+    return this.page.locator('#qr svg');
+  }
+  get joinUrl(): Locator {
+    return this.page.locator('#join-url');
+  }
   get playerChips(): Locator {
     return this.page.locator('#players .chip');
   }
