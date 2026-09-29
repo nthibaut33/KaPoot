@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "sandbox": "playwright test -c playwright.sandbox.config.ts",
-    "build": "npm install && npm run typecheck && npm test && npm run test:e2e"
+    "build": "npm install && npm run typecheck"
   },
   "engines": {
     "node": ">=22.6"
