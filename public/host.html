@@ -15,6 +15,7 @@
       <label for="quiz">Definition JSON</label>
       <textarea id="quiz" spellcheck="false"></textarea>
       <button type="submit">Creer la partie</button>
+      <button type="button" class="ghost" id="copy-prompt">Copier le prompt IA</button>
       <p class="error" id="setup-error"></p>
     </form>
 
@@ -76,6 +77,30 @@
       };
 
       $('#quiz').value = JSON.stringify(SAMPLE, null, 2);
+
+      $('#copy-prompt').addEventListener('click', async () => {
+        const button = $('#copy-prompt');
+        try {
+          const res = await fetch('/prompt-quiz.md');
+          if (!res.ok) throw new Error();
+          const text = await res.text();
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            // Contexte non securise (http sur le reseau local) : pas d API clipboard.
+            const tmp = document.createElement('textarea');
+            tmp.value = text;
+            document.body.appendChild(tmp);
+            tmp.select();
+            document.execCommand('copy');
+            tmp.remove();
+          }
+          button.textContent = 'Prompt copie !';
+        } catch {
+          button.textContent = 'Copie impossible';
+        }
+        setTimeout(() => (button.textContent = 'Copier le prompt IA'), 2000);
+      });
 
       const timerBar = $('#timer').firstElementChild;
       let cancelTimer = null;

@@ -28,6 +28,35 @@ Node 22.6+ requis : les fichiers `.ts` sont exécutés directement, sans étape 
 2. Les joueurs ouvrent `/`, saisissent le code PIN affiché et leur pseudo.
 3. L'animateur démarre, puis enchaîne les questions depuis sa console.
 
+### Générer un quiz avec une IA
+
+Le bouton **Copier le prompt IA** du formulaire animateur copie un prompt prêt à coller dans n'importe quel assistant (le texte vit dans [public/prompt-quiz.md](public/prompt-quiz.md)). Remplacez les éléments entre crochets (sujet, nombre de questions, niveau, durée), puis collez le JSON obtenu dans le champ « Definition JSON ».
+
+Format attendu :
+
+```json
+{
+  "title": "Titre du quiz",
+  "questions": [
+    {
+      "text": "Intitulé de la question ?",
+      "choices": ["Réponse A", "Réponse B", "Réponse C", "Réponse D"],
+      "correctIndex": 2,
+      "timeLimitSec": 20
+    }
+  ]
+}
+```
+
+| Champ | Contrainte |
+|---|---|
+| `title` | 1 à 80 caractères |
+| `questions` | 1 à 50 questions |
+| `text` | 1 à 200 caractères |
+| `choices` | 2 à 4 réponses, 1 à 100 caractères chacune |
+| `correctIndex` | Index (base 0) de la bonne réponse dans `choices` |
+| `timeLimitSec` | Entier de 5 à 120, optionnel (20 par défaut) |
+
 Une question se termine quand le chrono expire **ou** quand tous les joueurs connectés ont répondu. Une bonne réponse rapporte entre 1000 et 100 points, dégressifs selon le temps de réaction.
 
 ## Architecture
